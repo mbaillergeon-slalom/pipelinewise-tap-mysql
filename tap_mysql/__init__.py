@@ -423,9 +423,7 @@ def main_impl():
     if args.config["ssh_user"] and args.config["ssh_host"]:
         ssh_tunnel = SSHTunnel(args.config)
         ssh_tunnel_forwarder = ssh_tunnel.open_ssh_tunnel()
-        print("STARTING TUNNEL")
         ssh_tunnel_forwarder.start()
-        print(ssh_tunnel_forwarder.local_bind_port)
         mysql_conn.set_ssh_tunnel_port(ssh_tunnel_forwarder)
 
     log_server_params(mysql_conn)
