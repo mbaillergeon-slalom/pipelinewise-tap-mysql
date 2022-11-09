@@ -24,6 +24,7 @@ setup(name='pipelinewise-tap-mysql',
           'mysql-replication==0.30',
           'plpygis==0.2.0',
           'tzlocal==2.1',
+          'sshtunnel==0.4.0'
       ],
       extras_require={
           'test': [

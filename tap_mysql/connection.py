@@ -5,8 +5,9 @@ import backoff
 import pymysql
 import ssl
 import singer
-
+from sshtunnel import SSHTunnelForwarder
 from pymysql.constants import CLIENT
+import time
 
 LOGGER = singer.get_logger('tap_mysql')
 
@@ -25,14 +26,14 @@ DEFAULT_SESSION_SQLS = ['SET @@session.time_zone="+0:00"',
 
 @backoff.on_exception(backoff.expo,
                       (pymysql.err.OperationalError),
-                      max_tries=5,
+                      max_tries=1,
                       factor=2)
 def connect_with_backoff(connection):
+
     connection.connect()
     run_session_sqls(connection)
 
     return connection
-
 
 def run_session_sqls(connection):
     session_sqls = connection.session_sqls
@@ -67,6 +68,38 @@ def parse_internal_hostname(hostname):
     return hostname
 
 
+class SSHTunnel():
+    def __init__(self, config):
+        self.ssh_user = config["ssh_user"]
+        self.ssh_host = config["ssh_host"]
+        self.ssh_port = int(config["ssh_port"])
+        self.ssh_remote_bind_address = config["ssh_remote_bind_address"]
+        self.ssh_pkey = self.create_pkey_file(config["ssh_pkey_string"])
+        self.port = int(config["port"])
+
+    def create_pkey_file(self, ssh_pkey_string):
+        self.ssh_pkey_string = ssh_pkey_string
+        with open("./pkey", "wb") as ssh_pkey_file:
+            ssh_pkey_file.write(self.ssh_pkey_string.encode('utf-8'))
+
+
+    def open_ssh_tunnel(self):
+        global ssh_tunnel_forwarder
+        ssh_tunnel_forwarder = SSHTunnelForwarder(
+            (self.ssh_host, self.ssh_port),
+            ssh_username = self.ssh_user,
+            ssh_pkey="./pkey",
+            remote_bind_address=(self.ssh_remote_bind_address, self.port),
+            # local_bind_address = ('127.0.0.1', connection.port)
+        )
+        return ssh_tunnel_forwarder
+
+    def close_ssh_tunnel(self):
+        self.ssh_tunnel.close()
+    
+    def __exit__(self):
+        self.close_ssh_tunnel
+    
 class MySQLConnection(pymysql.connections.Connection):
     def __init__(self, config):
         # Google Cloud's SSL involves a self-signed certificate. This certificate's
@@ -141,6 +174,9 @@ class MySQLConnection(pymysql.connections.Connection):
             self.client_flag |= CLIENT.SSL
 
         self.session_sqls = config.get("session_sqls", DEFAULT_SESSION_SQLS)
+
+    def set_ssh_tunnel_port(self,ssh_tunnel_forwarder):
+        self.port = ssh_tunnel_forwarder.local_bind_port
 
     def __enter__(self):
         return self

@@ -8,7 +8,7 @@ from singer import metadata, get_logger
 from singer import metrics
 from singer.catalog import Catalog
 
-from tap_mysql.connection import connect_with_backoff, MySQLConnection, fetch_server_id, MYSQL_ENGINE
+from tap_mysql.connection import connect_with_backoff, MySQLConnection, SSHTunnel, fetch_server_id, MYSQL_ENGINE
 from tap_mysql.discover_utils import discover_catalog, resolve_catalog
 from tap_mysql.stream_utils import write_schema_message
 from tap_mysql.sync_strategies import binlog
@@ -420,6 +420,14 @@ def main_impl():
     args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
     mysql_conn = MySQLConnection(args.config)
+    if args.config["ssh_user"] and args.config["ssh_host"]:
+        ssh_tunnel = SSHTunnel(args.config)
+        ssh_tunnel_forwarder = ssh_tunnel.open_ssh_tunnel()
+        print("STARTING TUNNEL")
+        ssh_tunnel_forwarder.start()
+        print(ssh_tunnel_forwarder.local_bind_port)
+        mysql_conn.set_ssh_tunnel_port(ssh_tunnel_forwarder)
+
     log_server_params(mysql_conn)
 
     if args.discover:
@@ -434,6 +442,7 @@ def main_impl():
     else:
         raise ValueError("Hmm I don't know what to do! Neither discovery nor sync mode was selected.")
 
+    ssh_tunnel_forwarder.close()
 
 def main():
     try:
